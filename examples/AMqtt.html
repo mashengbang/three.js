@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Libelium 上报数据演示</title>
+  <meta charset="utf-8">
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+
+<body>
+  <h1>Libelium 上报数据演示</h1>
+    订阅主题：<input id = "subtopic" value="friendcom/lium/message"/> 
+    <textarea id ="responseText" style="width:100%" rows="24" cols="20"></textarea>
+</body>
+<script>
+  // 将在全局初始化一个 mqtt 变量
+  console.log(mqtt)
+  // 连接选项
+  const options = {
+    connectTimeout: 4000, // 超时时间
+    // 认证信息
+    clientId: 'emqx-connect-via-websocket1',
+    username: 'emqx-connect-via-websocket',
+    password: 'emqx-connect-via-websocket',
+  }
+
+  const client = mqtt.connect('ws://192.168.1.181:8083/mqtt', options)
+
+  client.on('reconnect', (error) => {
+    console.log('正在重连:', error)
+  })
+
+  client.on('error', (error) => {
+    console.log('连接失败:', error)
+  })
+
+  
+client.on('connect', (e) => {
+    console.log('成功连接服务器')
+    var ta = document.getElementById('subtopic');
+    // 订阅一个主题
+    client.subscribe(ta.value, { qos: 1 }, (error) => {
+        if (!error) {
+          console.log('订阅成功')
+        }
+    })
+})
+// 监听接收消息事件
+client.on('message', (topic, message) => {
+  var ta = document.getElementById('responseText');
+  ta.value += message.toString()+"\r\n";
+})
+</script>
+
+</html>

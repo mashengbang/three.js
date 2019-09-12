@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>大规模评估系统三维场景</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <link type="text/css" rel="stylesheet" href="main.css">
+</head>
+
+<body>
+    <div id="info">
+        <!-- <a href="http://threejs.org" target="_blank" rel="noopener">three.js</a> - <a href="https://clara.io"
+            target="_blank" rel="noopener">Clara.io</a> JSON Scene/Object Load Test<br />
+        More Information: <a href="https://clara.io/learn/user-guide/data_exchange/threejs_export" target="_blank"
+            rel="noopener">Clara.io ThreeJS Export Documentation</a> -->
+            大规模评估系统三维场景，相关数据展示
+    </div>
+    <fieldset id = "fader" class="controls">
+        <legend>衰减器</legend>
+        <div class="control">
+            <div id="chestNo">1</div><div>号柜</div>
+        </div>
+        <div class="control">
+            <div id="faderPostion">1</div>衰减器
+        </div>
+        <div class="control">
+            衰减器值 : <input type="number" value="5" step="1"  />
+             <input type="button" value="设置"/><br />
+        </div>
+    </fieldset>
+
+    <fieldset id = "dau" class="controls">
+        <legend>电表</legend>
+        <div class="control" id="dauname">
+            <!-- 1号柜 -->
+        </div>
+        <div class="control" id="daudesp">
+
+        </div>
+        
+        <!-- <div class="control">
+            Repeat : <input type="number" value="1" step="0.1" onchange="setRepeatU(this)" />
+            Y <input type="number" value="1" step="0.1" onchange="setRepeatV(this)" />
+        </div> -->
+        <div class="control">
+            实时电能量 : <input type="text" value="0030.01"  />KWh
+        </div>
+        <div class="control">
+            电表&nbsp;时钟 : <input type="text" style="width: 150px" id="clickTime" value=""  />
+        </div>
+        <div class="control">
+            日冻结电量 : <input type="text" value="0030.02"  />KWh
+        </div>
+        <div class="control">
+            剩余&nbsp;金额 : <input type="text" value="0030.21"  />元
+        </div>
+        <div class="control">
+            DAU硬件版本 : <input type="text" value="B172"  />
+        </div>
+        <div class="control">
+            软件&nbsp;版本 : <input type="text" value="3012"  />
+        </div>
+        <div class="control">
+            所在&nbsp;网络号 : <input type="text" value="001000000001"  />
+        </div>
+        <div class="control">
+            网络层次、时隙 : <input type="text" value="CH4/03"  />
+        </div>
+        <div class="control">
+            上一节点路径 : <input type="text" value="0015"  />
+        </div>
+    </fieldset>
+
+    <script src="three.js"></script>
+
+    <script src="js/WebGL.js"></script>
+    <script src="js/libs/stats.min.js"></script>
+    <script src="js/controls/OrbitControls.js"></script>
+    <!-- <script src="./js/objects/GPUParticleSystem.js"></script> -->
+    <script src="js/loaders/SVGLoader.js"></script>
+    <script>
+        setInterval("clickTime.value=new Date().toLocaleString()",1000);
+        var container, stats;
+        var camera, scene, renderer ,cube1,cube1direction=new THREE.Vector3();
+        var modelObject, selectedObject, lineGroup;
+
+
+        var raycaster = new THREE.Raycaster();
+        var mouse = new THREE.Vector2();
+
+        var ScalePosition = {x:0,y:0,z:0};
+
+        if (WEBGL.isWebGLAvailable() === false) {
+            document.body.appendChild(WEBGL.getWebGLErrorMessage());
+        }
+        
+        init();
+        animate();
+        onWindowResize();
+        showObjectInfo();
+        function init() {
+            //3d 容器
+            container = document.createElement('div');
+            //3d页面状态
+            stats = new Stats();
+            container.appendChild(stats.dom);
+            //将3d容器添加到页面中
+            document.body.appendChild(container);
+            //设置3d渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            //将渲染器添加到容器中
+            container.appendChild(renderer.domElement);
+            //设置相机初始化位置
+            camera = new THREE.PerspectiveCamera(2, window.innerWidth / window.innerHeight, 1, 1000);
+            camera.position.set(154.73932521560627, 127.8389346958687, 156.26790138216535);
+            // 设置屏幕
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xB0B0B0);
+            scene.fog = new THREE.FogExp2(0xcccccc, 0.002);
+            // lights 设置光照
+            var light = new THREE.DirectionalLight(0xffffff);
+            light.position.set(1, 1, 1);
+            scene.add(light);
+            var light = new THREE.DirectionalLight(0x002288);
+            light.position.set(- 1, - 1, - 1);
+            scene.add(light);
+            var light = new THREE.AmbientLight(0x222222);
+            scene.add(light);
+
+            var geometry = new THREE.BoxGeometry(0.05,0.05,0.05);
+            var material = new THREE.MeshBasicMaterial({color:0x00ff00});
+            cube1 = new THREE.Mesh(geometry,material);
+            cube1.position.x = 0;cube1.position.y=0.855;cube1.position.z=0;
+            cube1direction.x = 0;cube1direction.y=0.855;cube1direction.z=0;
+            scene.add(cube1)
+
+            //控制
+            controls = new THREE.OrbitControls(camera, container);
+
+            controls.enableDamping = true; // an animation loop is required when either damping or auto-rotation are enabled
+            controls.dampingFactor = 0.25;
+            controls.screenSpacePanning = false;
+            controls.minDistance = 100;
+            controls.maxDistance = 500;
+
+            controls.maxPolarAngle = Math.PI / 2;
+            // BEGIN Clara.io JSON loader code
+            var objectLoader = new THREE.ObjectLoader();
+
+            objectLoader.load( "assessModel.json", function ( obj ) {
+                //将解析出来的对象添加到屏幕中
+                modelObject = obj
+
+                scene.add( obj );
+
+                for(var i =0;i<modelObject.children.length;i++){
+                    if(modelObject.children[i].name.split('_').length==2){
+                        loadText(modelObject.children[i]);
+                    }
+                }
+            } );
+
+            stats.update();
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener( 'click', onMouseClick, false );
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+       
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); // only required if controls.enableDamping = true, or if controls.autoRotate = true
+            /*动画效果*/
+            var cube1Moveposition = {};
+            cube1Moveposition.x = cube1.position.x+ScalePosition.x
+            if(cube1Moveposition.x>cube1direction.x){
+                cube1Moveposition=cube1
+            }else{
+                cube1Moveposition.x = cube1.position.x+ScalePosition.x
+                cube1Moveposition.y = cube1.position.y+ScalePosition.y
+                cube1Moveposition.z = cube1.position.z+ScalePosition.z
+            }
+            cube1.position.set(cube1Moveposition.x ,cube1Moveposition.y ,cube1Moveposition.z );
+            /*动画效果*/
+
+            render();
+        }
+
+        function render() {
+            renderer.render(scene, camera);
+        }
+
+        function onMouseClick( event ) {
+            selectedObject =null;
+            event.preventDefault();
+            //通过鼠标点击的位置计算出raycaster所需要的点的位置，以屏幕中心为原点，值的范围为-1到1.
+            // console.info(event)
+            mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+            mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+            // mouse.set(mouse.x,mouse.y,0.5)
+            // 通过鼠标点的位置和当前相机的矩阵计算出raycaster
+            raycaster.setFromCamera( mouse, camera );
+
+            // 获取raycaster直线和所有模型相交的数组集合
+            var intersects = raycaster.intersectObjects( modelObject.children );
+
+            if(intersects.length>=1){
+                selectedObject = intersects[0].object;
+            }
+            
+            if(null!=selectedObject){
+                console.info(selectedObject)
+                showObjectInfo();
+                scene.remove(lineGroup);
+
+                if(selectedObject.name.indexOf('dau')>=0){
+                    showObjectInfo('dau');
+                    var dauInfo = selectedObject.name.split('_');
+                    if(dauInfo[1]=='1'){
+                        dauInfo[1]='2'
+                    }else if(dauInfo[1]=='2'){
+                        dauInfo[1]='3'
+                    }else if(dauInfo[1]=='3'){
+                        dauInfo[1]='4'
+                    }else if(dauInfo[1]=='4'){
+                        dauInfo[1]='5'
+                    }else if(dauInfo[1]=='5'){
+                        dauInfo[1]='6'
+                    }else if(dauInfo[1]=='6'){
+                        dauInfo[1]='7'
+                    }else if(dauInfo[1]=='7'){
+                        dauInfo[1]='8'
+                    }else if(dauInfo[1]=='8'){
+                        dauInfo[1]='9'
+                    }else{
+                        dauInfo[1]='1'
+                    }
+                    var tttt = dauInfo[0]+'_'+dauInfo[1]+'_'+dauInfo[2]+'_'+dauInfo[3]+'_'
+                    
+                    lineGroup=new THREE.Group();
+                    document.getElementById('dauname').innerHTML = selectedObject.name
+                    var material = new THREE.LineBasicMaterial({color:0x0000ff});
+                    
+                    for(var i =0;i<modelObject.children.length;i++){
+                        if(modelObject.children[i].name.indexOf(tttt)>=0){
+                            var geometry = new THREE.Geometry();
+                            geometry.vertices.push(selectedObject.position);
+                            geometry.vertices.push(modelObject.children[i].position);
+                            var line=new THREE.Line(geometry,material);
+                            lineGroup.add(line);
+                        }
+                    }
+                   
+                    scene.add(lineGroup); 
+                }
+                if(selectedObject.name.indexOf('shield_')>=0){
+                    showObjectInfo('fader');
+                    // debugger
+                    var faderInfo = selectedObject.name.split('_');
+                    document.getElementById('chestNo').innerHTML = faderInfo[1]
+                    if(faderInfo[2].indexOf('top')>=0&&faderInfo[3]=='z'){
+                        document.getElementById('faderPostion').innerHTML='上层载波'
+                    }else if(faderInfo[2].indexOf('bottom')>=0&&faderInfo[3]=='z'){
+                        document.getElementById('faderPostion').innerHTML='下层载波'
+                    }else if(faderInfo[2].indexOf('top')>=0&&faderInfo[3]=='w'){
+                        document.getElementById('faderPostion').innerHTML='上层无线'
+                    }else{
+                        document.getElementById('faderPostion').innerHTML='下层无线'
+                    }
+                    // console.info(faderInfo)
+                }else if (selectedObject.name.indexOf('dau_')>=0){
+                    var dauInfo = selectedObject.name.split('_');
+                    if(dauInfo[2]=='top'){
+                        document.getElementById('daudesp').innerHTML=dauInfo[1]+'号柜上层屏蔽箱'+dauInfo[4]+'号电表'
+                    }else if(dauInfo[2]=='bottom'){
+                        document.getElementById('daudesp').innerHTML=dauInfo[1]+'号柜下层屏蔽箱'+dauInfo[4]+'号电表'
+                    }
+                    console.info(dauInfo)
+                }
+            }
+            //将所有的相交的模型的颜色设置为红色，如果只需要将第一个触发事件，那就数组的第一个模型改变颜色即可
+            // for ( var i = 0; i < intersects.length; i++ ) {
+            //     console.info(intersects[ i ].object.name)
+            // }
+
+        }   
+
+        //显示信息展示框
+        function showObjectInfo(target){
+            var fieldsets = document.getElementsByTagName("fieldset");
+            fieldsets[0].style.display="none";
+            fieldsets[1].style.display="none";
+            if(null!=target){
+                document.getElementById(target).style.display="inline"
+            }
+        }
+
+        //无线信号发送动画效果
+        var indexPoint=0;
+        var setIntervalId = setInterval(function () {
+            // console.info(modelObject.children[indexPoint])
+            cube1.position.x = 0;cube1.position.y=0.855;cube1.position.z=0;
+            if(indexPoint>modelObject.children.length){
+                indexPoint=0;
+            }
+            if(modelObject.children[indexPoint].name.indexOf('dau')>=0){
+                cube1direction=modelObject.children[indexPoint].position;
+                ScalePosition.x = (cube1direction.x-cube1.position.x )/120;
+                ScalePosition.y = (cube1direction.y-cube1.position.y )/120;
+                ScalePosition.z = (cube1direction.z-cube1.position.z )/120;
+            }
+          
+            indexPoint++;
+        }, 2500);
+
+        //加载文字
+        function loadText(obj){
+            var loader = new THREE.FontLoader();
+            loader.load( 'fonts/helvetiker_regular.typeface.json', function ( font ) {
+                
+                var xMid, text;
+                var color = new THREE.Color( 0x006699 );
+                var matDark = new THREE.MeshBasicMaterial( {
+                    color: color,
+                    side: THREE.DoubleSide
+                } );
+                var matLite = new THREE.MeshBasicMaterial( {
+                    color: color,
+                    transparent: true,
+                    opacity: 1,
+                    side: THREE.DoubleSide
+                } );
+
+                var message = obj.name.split('_')[1];
+                var shapes = font.generateShapes( message, 1 );
+                var geometry = new THREE.ShapeBufferGeometry( shapes );
+                geometry.computeBoundingBox();
+                xMid = - 0.5 * ( geometry.boundingBox.max.x - geometry.boundingBox.min.x );
+                geometry.translate( xMid, 1.5, 0 );
+                // make shape ( N.B. edge view not visible )
+                text = new THREE.Mesh( geometry, matLite );
+                
+                text.position.x = obj.position.x;
+                // text.position.y = obj.position.y;
+                text.position.z = obj.position.z;
+                console.info(text.position)
+                scene.add( text );
+            });   
+        }
+    </script>
+
+</body>
+
+</html>

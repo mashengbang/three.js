@@ -1,7 +1,7 @@
 body {
 	margin: 0;
 	background-color: #000;
-	color: #fff;
+	color: #000;
 	font-family: Monospace;
 	font-size: 13px;
 	line-height: 24px;
@@ -38,3 +38,15 @@ canvas {
 .dg.ac {
 	z-index: 2 !important; /* TODO Solve this in HTML */
 }
+
+.controls {
+	position: absolute;
+	text-align:left;
+	top: 60px;
+	left: 5px;
+	padding: 5px;
+}
+
+.control { margin-bottom: 3px; }
+
+input { width: 50px; }

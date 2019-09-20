@@ -45,6 +45,7 @@ canvas {
 	top: 60px;
 	left: 5px;
 	padding: 5px;
+	width: 300px;
 }
 
 .control { margin-bottom: 3px; }

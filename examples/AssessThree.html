@@ -10,81 +10,55 @@
 
 <body>
     <div id="info">
-        <!-- <a href="http://threejs.org" target="_blank" rel="noopener">three.js</a> - <a href="https://clara.io"
-            target="_blank" rel="noopener">Clara.io</a> JSON Scene/Object Load Test<br />
-        More Information: <a href="https://clara.io/learn/user-guide/data_exchange/threejs_export" target="_blank"
-            rel="noopener">Clara.io ThreeJS Export Documentation</a> -->
             大规模评估系统三维场景，相关数据展示
     </div>
     <fieldset id = "fader" class="controls">
-        <legend>衰减器</legend>
+        <legend>集中器状态</legend>
         <div class="control">
-            <div id="chestNo">1</div><div>号柜</div>
-        </div>
-        <div class="control">
-            <div id="faderPostion">1</div>衰减器
-        </div>
-        <div class="control">
-            衰减器值 : <input type="number" value="5" step="1"  />
-             <input type="button" value="设置"/><br />
-        </div>
-    </fieldset>
-
-    <fieldset id = "dau" class="controls">
-        <legend>电表</legend>
-        <div class="control" id="dauname">
-            <!-- 1号柜 -->
-        </div>
-        <div class="control" id="daudesp">
-
+            <textarea id ="cacNodeRunStatusLabel" style="width:100%;background-color: transparent;" rows="2" cols="20" ></textarea>
         </div>
         
-        <!-- <div class="control">
-            Repeat : <input type="number" value="1" step="0.1" onchange="setRepeatU(this)" />
-            Y <input type="number" value="1" step="0.1" onchange="setRepeatV(this)" />
-        </div> -->
-        <div class="control">
-            实时电能量 : <input type="text" value="0030.01"  />KWh
-        </div>
-        <div class="control">
-            电表&nbsp;时钟 : <input type="text" style="width: 150px" id="clickTime" value=""  />
-        </div>
-        <div class="control">
-            日冻结电量 : <input type="text" value="0030.02"  />KWh
-        </div>
-        <div class="control">
-            剩余&nbsp;金额 : <input type="text" value="0030.21"  />元
-        </div>
-        <div class="control">
-            DAU硬件版本 : <input type="text" value="B172"  />
-        </div>
-        <div class="control">
-            软件&nbsp;版本 : <input type="text" value="3012"  />
-        </div>
-        <div class="control">
-            所在&nbsp;网络号 : <input type="text" value="001000000001"  />
-        </div>
-        <div class="control">
-            网络层次、时隙 : <input type="text" value="CH4/03"  />
-        </div>
-        <div class="control">
-            上一节点路径 : <input type="text" value="0015"  />
+    </fieldset>
+
+    <fieldset id = "dau" class="controls" style="top:140px">
+        <legend>控制台信息</legend>
+        <div class="control" >
+            <textarea id ="consoleArea" style="width:100%;background-color: transparent;" rows="20" cols="20" ></textarea>
         </div>
     </fieldset>
+    <fieldset id = "test" class="controls" style="top:480px">
+            <legend>组网状态信息</legend>
+            <div class="control" >
+                <textarea id ="playAction" style="width:100%;background-color: transparent;" rows="4" cols="20" ></textarea>
+            </div>
+        </fieldset>
 
     <script src="three.js"></script>
 
     <script src="js/WebGL.js"></script>
     <script src="js/libs/stats.min.js"></script>
     <script src="js/controls/OrbitControls.js"></script>
-    <!-- <script src="./js/objects/GPUParticleSystem.js"></script> -->
+    <script src="./js/objects/GPUParticleSystem.js"></script>
     <script src="js/loaders/SVGLoader.js"></script>
+
+    <script src="js/postprocessing/EffectComposer.js"></script>
+    <script src="js/postprocessing/RenderPass.js"></script>
+    <script src="js/postprocessing/ShaderPass.js"></script>
+    <script src="js/postprocessing/OutlinePass.js"></script>
+    <script src="js/shaders/FXAAShader.js"></script>
+    <script src="js/shaders/CopyShader.js"></script>
+
+    <script src='js/libs/dat.gui.min.js'></script>
     <script>
-        setInterval("clickTime.value=new Date().toLocaleString()",1000);
         var container, stats;
         var camera, scene, renderer ,cube1,cube1direction=new THREE.Vector3();
         var modelObject, selectedObject, lineGroup;
-
+        var selectedObjects = [];
+        var composer, effectFXAA, outlinePass;
+        /* 大规模组网业务参数 */
+        var mapCacDau=new Map();// id 关系
+        var fieldLine = null; // 场强查询 连线，显示一次消失一次
+        var configLineGroup = new Map(); // 设置查询 多条线组成一个路由，以目的地址为key
 
         var raycaster = new THREE.Raycaster();
         var mouse = new THREE.Vector2();
@@ -94,11 +68,11 @@
         if (WEBGL.isWebGLAvailable() === false) {
             document.body.appendChild(WEBGL.getWebGLErrorMessage());
         }
-        
+
         init();
         animate();
         onWindowResize();
-        showObjectInfo();
+        /* 初始化三围 */
         function init() {
             //3d 容器
             container = document.createElement('div');
@@ -132,10 +106,6 @@
 
             var geometry = new THREE.BoxGeometry(0.05,0.05,0.05);
             var material = new THREE.MeshBasicMaterial({color:0x00ff00});
-            cube1 = new THREE.Mesh(geometry,material);
-            cube1.position.x = 0;cube1.position.y=0.855;cube1.position.z=0;
-            cube1direction.x = 0;cube1direction.y=0.855;cube1direction.z=0;
-            scene.add(cube1)
 
             //控制
             controls = new THREE.OrbitControls(camera, container);
@@ -148,106 +118,118 @@
 
             controls.maxPolarAngle = Math.PI / 2;
             // BEGIN Clara.io JSON loader code
-            var objectLoader = new THREE.ObjectLoader();
-
-            objectLoader.load( "assessModel.json", function ( obj ) {
+            var manager = new THREE.LoadingManager();
+				manager.onProgress = function ( item, loaded, total ) {
+					console.log( item, loaded, total );
+				};
+            var objectLoader = new THREE.ObjectLoader(manager);
+            objectLoader.load( "http://192.168.1.181:18080/AssessApi/ThreeModel?method=buildModel", function ( obj ) {
+            // objectLoader.load( "anewmodel.json", function ( object ) {
                 //将解析出来的对象添加到屏幕中
-                modelObject = obj
-
-                scene.add( obj );
-
-                for(var i =0;i<modelObject.children.length;i++){
-                    if(modelObject.children[i].name.split('_').length==2){
-                        loadText(modelObject.children[i]);
-                    }
-                }
+                modelObject = object
+                loadCacDauMap(modelObject);
+                scene.add( object );
             } );
-
-            stats.update();
             window.addEventListener('resize', onWindowResize, false);
             window.addEventListener( 'click', onMouseClick, false );
-        }
 
+            // outLine 特效 /* 特效 */
+            composer = new THREE.EffectComposer( renderer);
+            var renderPass = new THREE.RenderPass( scene, camera );
+            composer.addPass( renderPass );
+            outlinePass = new THREE.OutlinePass( new THREE.Vector2( window.innerWidth, window.innerHeight ), scene, camera );
+            composer.addPass( outlinePass );
+            var onLoad = function ( texture ) {
+                outlinePass.patternTexture = texture;
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+            };
+            var loader = new THREE.TextureLoader();
+            loader.load( 'textures/tri_pattern.jpg', onLoad );
+
+            effectFXAA = new THREE.ShaderPass( THREE.FXAAShader );
+            effectFXAA.uniforms[ 'resolution' ].value.set( 1 / window.innerWidth, 1 / window.innerHeight );
+            effectFXAA.renderToScreen = true;
+            composer.addPass( effectFXAA );
+            outlinePass.edgeStrength= 5.0;
+			outlinePass.edgeGlow= 1.0;
+			outlinePass.edgeThickness= 3.0;
+			outlinePass.pulsePeriod= 0;
+			outlinePass.rotate= false;
+			outlinePass.usePatternTexture= false;
+
+            outlinePass.visibleEdgeColor.set( '#e3067b' );
+            outlinePass.hiddenEdgeColor.set( '#b34a26' );
+        }
+        /* 场景窗口设置*/
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+            effectFXAA.uniforms[ 'resolution' ].value.set( 1 / window.innerWidth, 1 / window.innerHeight );
         }
-       
+        /*动画效果*/
         function animate() {
             requestAnimationFrame(animate);
+            stats.begin();
             controls.update(); // only required if controls.enableDamping = true, or if controls.autoRotate = true
-            /*动画效果*/
-            var cube1Moveposition = {};
-            cube1Moveposition.x = cube1.position.x+ScalePosition.x
-            if(cube1Moveposition.x>cube1direction.x){
-                cube1Moveposition=cube1
-            }else{
-                cube1Moveposition.x = cube1.position.x+ScalePosition.x
-                cube1Moveposition.y = cube1.position.y+ScalePosition.y
-                cube1Moveposition.z = cube1.position.z+ScalePosition.z
-            }
-            cube1.position.set(cube1Moveposition.x ,cube1Moveposition.y ,cube1Moveposition.z );
             /*动画效果*/
 
             render();
+            stats.end();
         }
-
+        /*threejs 渲染器*/
         function render() {
             renderer.render(scene, camera);
+            composer.render();// outLine 动画效果渲染
         }
-
+        /* 鼠标点击事件处理 */
         function onMouseClick( event ) {
             selectedObject =null;
             event.preventDefault();
             //通过鼠标点击的位置计算出raycaster所需要的点的位置，以屏幕中心为原点，值的范围为-1到1.
-            // console.info(event)
             mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
             mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-            // mouse.set(mouse.x,mouse.y,0.5)
             // 通过鼠标点的位置和当前相机的矩阵计算出raycaster
             raycaster.setFromCamera( mouse, camera );
-
             // 获取raycaster直线和所有模型相交的数组集合
             var intersects = raycaster.intersectObjects( modelObject.children );
-
             if(intersects.length>=1){
                 selectedObject = intersects[0].object;
             }
-            
             if(null!=selectedObject){
-                console.info(selectedObject)
-                showObjectInfo();
-                scene.remove(lineGroup);
-
-                if(selectedObject.name.indexOf('dau')>=0){
-                    showObjectInfo('dau');
-                    var dauInfo = selectedObject.name.split('_');
-                    if(dauInfo[1]=='1'){
-                        dauInfo[1]='2'
-                    }else if(dauInfo[1]=='2'){
-                        dauInfo[1]='3'
-                    }else if(dauInfo[1]=='3'){
-                        dauInfo[1]='4'
-                    }else if(dauInfo[1]=='4'){
-                        dauInfo[1]='5'
-                    }else if(dauInfo[1]=='5'){
-                        dauInfo[1]='6'
-                    }else if(dauInfo[1]=='6'){
-                        dauInfo[1]='7'
-                    }else if(dauInfo[1]=='7'){
-                        dauInfo[1]='8'
-                    }else if(dauInfo[1]=='8'){
-                        dauInfo[1]='9'
-                    }else{
-                        dauInfo[1]='1'
+                // console.info(selectedObject)
+                // var macSrcAddress = mapCacDau.get('010000000000');// 源地址
+                // if(null!=macSrcAddress){
+                //     scene.remove(fieldLine);
+                //     var material = new THREE.LineBasicMaterial({color:0x0000ff});
+                //     var geometry = new THREE.Geometry();
+                //     geometry.vertices.push(selectedObject.position);
+                //     geometry.vertices.push(macSrcAddress.position);
+                //     fieldLine=new THREE.Line(geometry,material);
+                //     scene.add(fieldLine);
+                //     // addSelectedObject(fieldLine);
+                // }
+                // 点击衰减器事件
+                if(selectedObject.name=='fader') {
+                    faderGuiParams={
+                        所属机柜:'1号柜',
+                        衰减器类型:'载波',
+                        衰减器位置:'上层',
+                        衰减值:'5'
                     }
-                    var tttt = dauInfo[0]+'_'+dauInfo[1]+'_'+dauInfo[2]+'_'+dauInfo[3]+'_'
-                    
+                    loadFaderGui();
+                }
+                
+                if(selectedObject.name=='dau') {
+                    loadDAUGui()
+                }
+                /* if(selectedObject.name.indexOf('dau')>=0){
+                    // 上下级路由关系 
                     lineGroup=new THREE.Group();
                     document.getElementById('dauname').innerHTML = selectedObject.name
                     var material = new THREE.LineBasicMaterial({color:0x0000ff});
-                    
                     for(var i =0;i<modelObject.children.length;i++){
                         if(modelObject.children[i].name.indexOf(tttt)>=0){
                             var geometry = new THREE.Geometry();
@@ -257,68 +239,12 @@
                             lineGroup.add(line);
                         }
                     }
-                   
                     scene.add(lineGroup); 
                 }
-                if(selectedObject.name.indexOf('shield_')>=0){
-                    showObjectInfo('fader');
-                    // debugger
-                    var faderInfo = selectedObject.name.split('_');
-                    document.getElementById('chestNo').innerHTML = faderInfo[1]
-                    if(faderInfo[2].indexOf('top')>=0&&faderInfo[3]=='z'){
-                        document.getElementById('faderPostion').innerHTML='上层载波'
-                    }else if(faderInfo[2].indexOf('bottom')>=0&&faderInfo[3]=='z'){
-                        document.getElementById('faderPostion').innerHTML='下层载波'
-                    }else if(faderInfo[2].indexOf('top')>=0&&faderInfo[3]=='w'){
-                        document.getElementById('faderPostion').innerHTML='上层无线'
-                    }else{
-                        document.getElementById('faderPostion').innerHTML='下层无线'
-                    }
-                    // console.info(faderInfo)
-                }else if (selectedObject.name.indexOf('dau_')>=0){
-                    var dauInfo = selectedObject.name.split('_');
-                    if(dauInfo[2]=='top'){
-                        document.getElementById('daudesp').innerHTML=dauInfo[1]+'号柜上层屏蔽箱'+dauInfo[4]+'号电表'
-                    }else if(dauInfo[2]=='bottom'){
-                        document.getElementById('daudesp').innerHTML=dauInfo[1]+'号柜下层屏蔽箱'+dauInfo[4]+'号电表'
-                    }
-                    console.info(dauInfo)
-                }
+                 */
             }
-            //将所有的相交的模型的颜色设置为红色，如果只需要将第一个触发事件，那就数组的第一个模型改变颜色即可
-            // for ( var i = 0; i < intersects.length; i++ ) {
-            //     console.info(intersects[ i ].object.name)
-            // }
 
         }   
-
-        //显示信息展示框
-        function showObjectInfo(target){
-            var fieldsets = document.getElementsByTagName("fieldset");
-            fieldsets[0].style.display="none";
-            fieldsets[1].style.display="none";
-            if(null!=target){
-                document.getElementById(target).style.display="inline"
-            }
-        }
-
-        //无线信号发送动画效果
-        var indexPoint=0;
-        var setIntervalId = setInterval(function () {
-            // console.info(modelObject.children[indexPoint])
-            cube1.position.x = 0;cube1.position.y=0.855;cube1.position.z=0;
-            if(indexPoint>modelObject.children.length){
-                indexPoint=0;
-            }
-            if(modelObject.children[indexPoint].name.indexOf('dau')>=0){
-                cube1direction=modelObject.children[indexPoint].position;
-                ScalePosition.x = (cube1direction.x-cube1.position.x )/120;
-                ScalePosition.y = (cube1direction.y-cube1.position.y )/120;
-                ScalePosition.z = (cube1direction.z-cube1.position.z )/120;
-            }
-          
-            indexPoint++;
-        }, 2500);
 
         //加载文字
         function loadText(obj){
@@ -353,6 +279,150 @@
                 console.info(text.position)
                 scene.add( text );
             });   
+        }
+
+        /* 场景加载成功后执行，加载 cac 和dau 的 id关联 一般不进行修改 */
+        function loadCacDauMap(modelObject){
+            if(null!=modelObject){
+                modelObject.children.forEach((item,index,array)=>{
+                    //执行代码
+                    if(item.name==='cac'||item.name==='dau'){
+                        mapCacDau.set(item.uuid,item)
+                    }
+                })
+            }
+        }
+        function addSelectedObject( object ) {
+            selectedObjects = [];
+            selectedObjects.push( object );
+            outlinePass.selectedObjects = selectedObjects;
+            
+        }
+        /* 场景驱动业务 websocket 驱动 场景 */
+        var socket;
+        if(!window.WebSocket){
+            window.WebSocket = window.MozWebSocket;
+        }
+        if(window.WebSocket){
+            socket = new WebSocket("ws://192.168.1.181:18080/websocket");
+            
+            socket.onmessage = function(event){
+                
+                var json = JSON.parse(event.data);
+                if(json.packet =='playAction'){
+                    var playAction = document.getElementById('playAction');
+                    playAction.focus();
+                    playAction.value = JSON.stringify(json.data);
+
+                    if(json.type==='macBeaconframe'){
+                        var beaconModel = mapCacDau.get(json.data);// 信标
+                        if(beaconModel!=null){
+                            addSelectedObject(beaconModel)
+                        }
+                    }else if (json.type==='field') {// 下发场强 连线消失
+                        outlinePass.selectedObjects=[];
+                        // 创建线条
+                        // var lineGroup=new THREE.Group();
+                        console.log(event.data);
+                        var macDesAddress = mapCacDau.get(json.data.macDesAddress);// 目标地址
+                        var macSrcAddress = mapCacDau.get(json.data.macSrcAddress);// 源地址
+                        if(null!=macDesAddress&&null!=macSrcAddress){
+                            if(null!=fieldLine){
+                                scene.remove(fieldLine);
+                            }
+                            var material = new THREE.LineBasicMaterial({color:0x0000ff});
+                            var geometry = new THREE.Geometry();
+                            geometry.vertices.push(macDesAddress.position);
+                            geometry.vertices.push(macSrcAddress.position);
+                            fieldLine=new THREE.Line(geometry,material);
+                            scene.add(fieldLine);
+                        }
+                    }else if (json.type==='config') {// 下发配置 连线不消失，并且显示出不同级别的颜色,这个的业务很复杂
+
+                        if(null!=fieldLine){
+                            scene.remove(fieldLine);
+                        }
+                    }
+                }else if (json.packet =='consoleArea'){
+                    var consoleArea = document.getElementById('consoleArea');
+                    consoleArea.focus();
+                    consoleArea.value += json.data+"\r\n"
+                }else if (json.packet =='cacNodeRunStatusLabel') {
+                    var cacNodeRunStatusLabel = document.getElementById('cacNodeRunStatusLabel');
+                    cacNodeRunStatusLabel.focus();
+                    cacNodeRunStatusLabel.value = json.data;
+                }
+            };
+    
+            socket.onopen = function(event){
+                // 连接成功时的业务
+            };
+    
+            socket.onclose = function(event){
+                // socke断开时处理的业务
+            };
+        }else{
+            alert("您的浏览器不支持WebSocket协议！");
+        }
+
+
+        /* ***************************
+        *   信息展示业务逻辑 
+        ******************************/
+        function reflashGui(){
+            faderGui.closed=true
+            dauGui.closed=true
+        }
+        var faderGui = new dat.GUI( { name: '衰减器信息',width: 300 } );
+        faderGui.domElement.style = 'position:absolute;top:10px;right:0px';
+        var faderGuiParams={
+            所属机柜:'',
+            衰减器类型:'',
+            衰减器位置:'',
+            衰减值:''
+        }
+        faderGui.closed=true
+        function loadFaderGui() {
+            reflashGui();
+            faderGui = new dat.GUI( { name: '衰减器信息',width: 300 } );
+            faderGui.domElement.style = 'position:absolute;top:10px;right:0px';
+            faderGui.closed=false;
+            faderGui.add(faderGuiParams,'所属机柜');
+            faderGui.add(faderGuiParams,'衰减器类型');
+            faderGui.add(faderGuiParams,'衰减器位置');
+            faderGui.add(faderGuiParams,'衰减值').onChange( function ( value ) {
+                // outlinePass.pulsePeriod = Number( value );
+            } );
+        }
+        
+        var dauGui = new dat.GUI( { name: 'DAU信息',width: 300 } );
+        dauGui.domElement.style = 'position:absolute;top:10px;right:0px';
+        var dauGuiParams={
+            实时电能量:'0030.02 kwh',
+            电表时钟:'08:17:50',
+            日冻结电量:'0030.21 元',
+            剩余金额:'0030.21 元',
+            DAU硬件版本:'B17',
+            软件版本:'3012',
+            所在网络号:'001000000001',
+            网络层次时隙:'CH4/03',
+            上一节点路径:'0015'
+        }
+        dauGui.closed=true
+        function loadDAUGui() {
+            reflashGui();
+            dauGui = new dat.GUI( { name: 'DAU信息',width: 300 } );
+            dauGui.domElement.style = 'position:absolute;top:10px;right:0px';
+            dauGui.closed=false;
+            dauGui.add(dauGuiParams,'实时电能量');
+            dauGui.add(dauGuiParams,'电表时钟');
+            dauGui.add(dauGuiParams,'日冻结电量');
+            dauGui.add(dauGuiParams,'剩余金额');
+            dauGui.add(dauGuiParams,'DAU硬件版本');
+            dauGui.add(dauGuiParams,'软件版本');
+            dauGui.add(dauGuiParams,'所在网络号');
+            dauGui.add(dauGuiParams,'网络层次时隙');
+            dauGui.add(dauGuiParams,'上一节点路径');
         }
     </script>
 
